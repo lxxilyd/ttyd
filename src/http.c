@@ -84,8 +84,19 @@ static void pss_buffer_free(struct pss_http *pss) {
 }
 
 static void access_log(struct lws *wsi, const char *path) {
-  char rip[50];
+  char rip[128];
 
+  if (lws_hdr_copy(wsi, rip, sizeof(rip), WSI_TOKEN_HTTP_X_REAL_IP) > 0) {
+    lwsl_notice("HTTP %s - %s\n", path, rip);
+    return;
+  }
+  if (lws_hdr_copy(wsi, rip, sizeof(rip),  WSI_TOKEN_X_FORWARDED_FOR) > 0) {
+    char *first_ip = strtok(rip, ",");
+    if(first_ip) {
+      lwsl_notice("HTTP %s - %s\n", path, first_ip);
+      return;
+    }
+  }
   lws_get_peer_simple(lws_get_network_wsi(wsi), rip, sizeof(rip));
   lwsl_notice("HTTP %s - %s\n", path, rip);
 }

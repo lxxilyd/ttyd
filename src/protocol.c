@@ -150,7 +150,18 @@ static char **build_env(struct pss_tty *pss) {
 static bool spawn_process(struct pss_tty *pss, uint16_t columns, uint16_t rows) {
   char** args = build_args(pss);
   char** env = build_env(pss);
-  printf("args: %s, env: %s", args, env);
+  
+  // 打印 args（命令行参数）
+  printf("===== Command Line Arguments (args) =====\n");
+  for (int i = 0; args[i] != NULL; i++) {
+    printf("args[%d]: %s\n", i, args[i]);
+  }
+
+  // 打印 env（环境变量）
+  printf("===== Environment Variables (env) =====\n");
+  for (int i = 0; env[i] != NULL; i++) {
+      printf("env[%d]: %s\n", i, env[i]);
+  }
   pty_process *process = process_init((void *)pty_ctx_init(pss), server->loop, args, env);
   if (server->cwd != NULL) process->cwd = strdup(server->cwd);
   if (columns > 0) process->columns = columns;

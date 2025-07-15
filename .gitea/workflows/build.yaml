@@ -18,7 +18,7 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake ..
+          cmake -DLWS_WITH_HTTP_UNCOMMON_HEADERS=1 -DLWS_WITH_HTTP_HEADERS_ALL=1  ..
           make
       - name: View build
         run: pwd && ls && ls build/
