@@ -25,7 +25,7 @@ jobs:
       - name: Upload build
         vars: 
         run: |
-          '''
+          {
           pwd && ls
           echo "开始上传制品到宿主机"
           cd build
@@ -38,7 +38,7 @@ jobs:
           }
           expect eof" 
           echo "上传完毕"
-          '''
+          }
       - name: List build
         run: pwd && ls
           
