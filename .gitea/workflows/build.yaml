@@ -29,7 +29,7 @@ jobs:
           cd build
           pwd && ls
           expect -c "
-          spawn scp ttyd lxxilyd@172.31.0.1:/home/lxxilyd
+          spawn scp ttyd ${{ vars.SCP_USERNAME }}@${{ vars.SCP_HOST }}:${{ vars.UPLOAD_PATH }}
           expect {
           \"*assword\" {set timeout 300; send \"${{ secrets.SCP_PASSWORD }}\r\";}
           \"yes/no\" {send \"yes\r\"; exp_continue;}
