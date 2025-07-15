@@ -148,8 +148,9 @@ static char **build_env(struct pss_tty *pss) {
 }
 
 static bool spawn_process(struct pss_tty *pss, uint16_t columns, uint16_t rows) {
-  char* args = build_args(pss);
-  char* env = build_env(pss)
+  char** args = build_args(pss);
+  char** env = build_env(pss);
+  printf("args: %s, env: %s", args, env);
   pty_process *process = process_init((void *)pty_ctx_init(pss), server->loop, args, env);
   if (server->cwd != NULL) process->cwd = strdup(server->cwd);
   if (columns > 0) process->columns = columns;
