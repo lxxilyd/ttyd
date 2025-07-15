@@ -26,8 +26,10 @@ jobs:
         vars: 
         run: |
           '''
+          pwd && ls
           echo "开始上传制品到宿主机"
           cd build
+          pwd && ls
           expect -c "
           spawn scp ttyd root@172.31.0.1:/lxxilyd
           expect {
