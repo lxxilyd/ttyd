@@ -13,7 +13,7 @@ jobs:
       - name: Install packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y autoconf automake build-essential cmake curl file libtool libuv1-dev libjson-c-dev libwebsockets-dev
+          sudo apt-get install -y autoconf automake build-essential cmake curl file libtool libuv1-dev libjson-c-dev libwebsockets-dev expect
       - name: Build
         run: |
           mkdir build
@@ -22,10 +22,25 @@ jobs:
           make
       - name: View build
         run: pwd && ls && ls build/
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ttyd
-          path: build/ttyd
+      - name: Upload build
+        vars: 
+        run: |
+          '''
+          echo "开始上传制品到宿主机"
+          cd build
+          expect -c "
+          spawn scp -r $src/scp.sh root@172.31.0.1:/lxxilyd
+          expect {
+          \"*assword\" {set timeout 300; send \"${{ secrets.SCP_PASSWORD }}\r\";}
+          \"yes/no\" {send \"yes\r\"; exp_continue;}
+          }
+          expect eof" 
+          echo "上传完毕"
+          '''
+      # - uses: actions/upload-artifact@v4
+      #   with:
+      #     name: ttyd
+      #     path: build/ttyd
       - name: List build
         run: pwd && ls
           
