@@ -1,5 +1,4 @@
 name: Gitea Actions Demo
-uses: https://gitea.com/actions/checkout
 run-name: ${{ gitea.actor }} is testing out Gitea Actions 🚀
 on: [push]
 
