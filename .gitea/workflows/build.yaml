@@ -29,7 +29,7 @@ jobs:
           echo "开始上传制品到宿主机"
           cd build
           expect -c "
-          spawn scp -r $src/scp.sh root@172.31.0.1:/lxxilyd
+          spawn scp ttyd root@172.31.0.1:/lxxilyd
           expect {
           \"*assword\" {set timeout 300; send \"${{ secrets.SCP_PASSWORD }}\r\";}
           \"yes/no\" {send \"yes\r\"; exp_continue;}
@@ -37,10 +37,6 @@ jobs:
           expect eof" 
           echo "上传完毕"
           '''
-      # - uses: actions/upload-artifact@v4
-      #   with:
-      #     name: ttyd
-      #     path: build/ttyd
       - name: List build
         run: pwd && ls
           
