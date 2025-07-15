@@ -6,25 +6,25 @@ on:
       - develop
 
 jobs:
-  cross:
+  build:
     runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [arm]
     steps:
       - uses: actions/checkout@v4
       - name: Install packages
         run: |
           sudo apt-get update
           sudo apt-get install -y autoconf automake build-essential cmake curl file libtool
-      - name: Cross build (${{ matrix.target }})
-        env:
-          BUILD_TARGET: ${{ matrix.target }}
-        run: ./scripts/cross-build.sh
+      - name: Build
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+          make
+      - name: View build
+        run: pwd && ls
       - uses: actions/upload-artifact@v4
         with:
-          name: ttyd.${{ matrix.target }}
+          name: ttyd.arm
           path: build/ttyd*
       - name: List build
         run: pwd && ls
