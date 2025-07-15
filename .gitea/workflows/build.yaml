@@ -21,11 +21,11 @@ jobs:
           cmake ..
           make
       - name: View build
-        run: pwd && ls
+        run: pwd && ls && ls build/
       - uses: actions/upload-artifact@v4
         with:
-          name: ttyd.arm
-          path: build/ttyd*
+          name: ttyd
+          path: build/ttyd
       - name: List build
         run: pwd && ls
           
