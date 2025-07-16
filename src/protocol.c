@@ -148,20 +148,54 @@ static char **build_env(struct pss_tty *pss) {
 }
 
 static bool spawn_process(struct pss_tty *pss, uint16_t columns, uint16_t rows) {
-  char** args = build_args(pss);
-  char** env = build_env(pss);
-  
+  char **args = build_args(pss);
+  char **env = build_env(pss);
+
   // 打印 args（命令行参数）
-  printf("===== Command Line Arguments (args) =====\n");
-  for (int i = 0; args[i] != NULL; i++) {
-    printf("args[%d]: %s\n", i, args[i]);
+  lwsl_notice("===== Command Line Arguments (args) =====\n");
+  lwsl_notice("pss->address %s\n", pss->address);
+  // 检查并替换 `login -h {client_ip}`
+  if (args[0] != NULL && strcmp(args[0], "login") == 0) {
+    if (args[1] != NULL && strcmp(args[1], "-h") == 0) {
+      // 计算 args 的当前长度
+      int args_len = 0;
+      while (args[args_len] != NULL) args_len++;
+
+      // 分配新的 args 数组（至少 3 个元素 + NULL 终止）
+      char **new_args = malloc((args_len < 3 ? 4 : args_len + 1) * sizeof(char *));
+      if (!new_args) {
+        lwsl_err("malloc failed\n");
+        return false;
+      }
+
+      // 复制原有参数
+      for (int i = 0; i < args_len; i++) {
+        new_args[i] = args[i];
+      }
+
+      // 如果原 args 长度不足，初始化新增元素
+      if (args_len < 3) {
+        new_args[args_len] = NULL;      // args[2]（如果原本没有）
+        new_args[args_len + 1] = NULL;  // NULL 终止
+      }
+
+      // 替换 hostname
+      free(new_args[2]);  // 释放旧值（可能是 NULL）
+      new_args[2] = strdup(pss->address);
+      if (!new_args[2]) {
+        lwsl_err("strdup failed\n");
+        free(new_args);
+        return false;
+      }
+
+      // 释放旧 args（但不释放其元素，因为它们被 new_args 接管了）
+      free(args);
+      args = new_args;
+
+      lwsl_notice("Replace login -h hostname -> %s\n", pss->address);
+    }
   }
 
-  // 打印 env（环境变量）
-  printf("===== Environment Variables (env) =====\n");
-  for (int i = 0; env[i] != NULL; i++) {
-      printf("env[%d]: %s\n", i, env[i]);
-  }
   pty_process *process = process_init((void *)pty_ctx_init(pss), server->loop, args, env);
   if (server->cwd != NULL) process->cwd = strdup(server->cwd);
   if (columns > 0) process->columns = columns;
@@ -206,6 +240,20 @@ static bool check_auth(struct lws *wsi, struct pss_tty *pss) {
   }
 
   return true;
+}
+
+void get_rip(struct lws *wsi, char *rip, size_t len) {
+  if (lws_hdr_copy(wsi, rip, len, WSI_TOKEN_HTTP_X_REAL_IP) > 0) {
+    return;
+  }
+  if (lws_hdr_copy(wsi, rip, len, WSI_TOKEN_X_FORWARDED_FOR) > 0) {
+    char *first_ip = strtok(rip, ",");
+    if (first_ip) {
+      strncpy(rip, first_ip, len);
+      return;
+    }
+  }
+  lws_get_peer_simple(lws_get_network_wsi(wsi), rip, len);
 }
 
 int callback_tty(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len) {
@@ -260,7 +308,8 @@ int callback_tty(struct lws *wsi, enum lws_callback_reasons reason, void *user, 
 
       server->client_count++;
 
-      lws_get_peer_simple(lws_get_network_wsi(wsi), pss->address, sizeof(pss->address));
+      // lws_get_peer_simple(lws_get_network_wsi(wsi), pss->address, sizeof(pss->address));
+      get_rip(wsi, pss->address, sizeof(pss->address));
       lwsl_notice("WS   %s - %s, clients: %d\n", pss->path, pss->address, server->client_count);
       break;
 

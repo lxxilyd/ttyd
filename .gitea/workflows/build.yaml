@@ -18,7 +18,7 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake -DLWS_WITH_HTTP_UNCOMMON_HEADERS=1 -DLWS_WITH_HTTP_HEADERS_ALL=1  ..
+          cmake -DLWS_WITH_HTTP_UNCOMMON_HEADERS=1 -DLWS_WITH_HTTP_HEADERS_ALL=1 -DCMAKE_BUILD_TYPE=RELEASE -DBUILD_SHARED_LIBS=OFF -DCMAKE_C_FLAGS="-Os -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables -flto"  ..
           make
       - name: View build
         run: pwd && ls && ls build/

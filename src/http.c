@@ -83,21 +83,25 @@ static void pss_buffer_free(struct pss_http *pss) {
   if (pss->buffer != (char *)index_html && pss->buffer != html_cache) free(pss->buffer);
 }
 
-static void access_log(struct lws *wsi, const char *path) {
-  char rip[128];
-
-  if (lws_hdr_copy(wsi, rip, sizeof(rip), WSI_TOKEN_HTTP_X_REAL_IP) > 0) {
-    lwsl_notice("HTTP %s - %s\n", path, rip);
+static void get_rip(struct lws *wsi, char *rip, size_t len) {
+  if (lws_hdr_copy(wsi, rip, len, WSI_TOKEN_HTTP_X_REAL_IP) > 0) {
     return;
   }
-  if (lws_hdr_copy(wsi, rip, sizeof(rip),  WSI_TOKEN_X_FORWARDED_FOR) > 0) {
+  if (lws_hdr_copy(wsi, rip, len, WSI_TOKEN_X_FORWARDED_FOR) > 0) {
     char *first_ip = strtok(rip, ",");
     if(first_ip) {
-      lwsl_notice("HTTP %s - %s\n", path, first_ip);
+      strncpy(rip, first_ip, len);
       return;
     }
   }
-  lws_get_peer_simple(lws_get_network_wsi(wsi), rip, sizeof(rip));
+  lws_get_peer_simple(lws_get_network_wsi(wsi), rip, len);
+}
+
+static void access_log(struct lws *wsi, const char *path) {
+  char rip[128];
+  
+  get_rip(wsi, rip, sizeof(rip));
+  // lws_get_peer_simple(lws_get_network_wsi(wsi), rip, sizeof(rip));
   lwsl_notice("HTTP %s - %s\n", path, rip);
 }
 
