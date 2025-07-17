@@ -20,14 +20,11 @@ jobs:
           make
       - name: View build
         run: pwd && ls && ls build/
-      - name: Get Version
-        id: get_version
-        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
       - name: Upload build
         run: |
           echo "开始上传制品到宿主机"
           cd build
-          mv ttyd ttyd.`date '+%Y%m%d%H%M%S'`.${{ steps.get_version.outputs.VERSION }}
+          mv ttyd ttyd.`date '+%Y%m%d%H%M%S'`
           pwd && ls
           expect -c "
           spawn scp ttyd.* ${{ vars.USER }}@${{ vars.HOST }}:${{ vars.UPLOAD_PATH }}
