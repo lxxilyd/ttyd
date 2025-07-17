@@ -30,7 +30,7 @@ jobs:
           mv ttyd ttyd.`date '+%Y%m%d%H%M%S'`.${{ steps.get_version.outputs.VERSION }}
           pwd && ls
           expect -c "
-          spawn scp ttyd ${{ vars.USER }}@${{ vars.HOST }}:${{ vars.UPLOAD_PATH }}
+          spawn scp ttyd.* ${{ vars.USER }}@${{ vars.HOST }}:${{ vars.UPLOAD_PATH }}
           expect {
           \"*assword\" {set timeout 300; send \"${{ secrets.PASSWORD }}\r\";}
           \"yes/no\" {send \"yes\r\"; exp_continue;}
