@@ -152,8 +152,7 @@ static bool spawn_process(struct pss_tty *pss, uint16_t columns, uint16_t rows) 
   char **env = build_env(pss);
 
   // 打印 args（命令行参数）
-  lwsl_notice("===== Command Line Arguments (args) =====\n");
-  lwsl_notice("pss->address %s\n", pss->address);
+  lwsl_debug("pss->address %s\n", pss->address);
   // 检查并替换 `login -h {client_ip}`
   if (args[0] != NULL && strcmp(args[0], "login") == 0) {
     if (args[1] != NULL && strcmp(args[1], "-h") == 0) {
@@ -192,7 +191,7 @@ static bool spawn_process(struct pss_tty *pss, uint16_t columns, uint16_t rows) 
       free(args);
       args = new_args;
 
-      lwsl_notice("Replace login -h hostname -> %s\n", pss->address);
+      lwsl_debug("Replace login -h hostname -> %s\n", pss->address);
     }
   }
 

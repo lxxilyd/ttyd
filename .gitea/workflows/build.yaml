@@ -20,15 +20,19 @@ jobs:
           make
       - name: View build
         run: pwd && ls && ls build/
+      - name: Get Version
+        id: get_version
+        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
       - name: Upload build
         run: |
           echo "开始上传制品到宿主机"
           cd build
+          mv ttyd ttyd.`date '+%Y%m%d%H%M%S'`.${{ steps.get_version.outputs.VERSION }}
           pwd && ls
           expect -c "
-          spawn scp ttyd ${{ vars.SCP_USERNAME }}@${{ vars.SCP_HOST }}:${{ vars.UPLOAD_PATH }}
+          spawn scp ttyd ${{ vars.USER }}@${{ vars.HOST }}:${{ vars.UPLOAD_PATH }}
           expect {
-          \"*assword\" {set timeout 300; send \"${{ secrets.SCP_PASSWORD }}\r\";}
+          \"*assword\" {set timeout 300; send \"${{ secrets.PASSWORD }}\r\";}
           \"yes/no\" {send \"yes\r\"; exp_continue;}
           }
           expect eof" 
