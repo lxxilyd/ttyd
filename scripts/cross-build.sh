@@ -111,6 +111,8 @@ build_libwebsockets() {
             -DLWS_WITH_LEJP_CONF=OFF \
             -DLWS_WITH_LWSAC=OFF \
             -DLWS_WITH_SEQUENCER=OFF \
+            -DLWS_WITH_HTTP_UNCOMMON_HEADERS=1 \
+            -DLWS_WITH_HTTP_HEADERS_ALL=1 \
             ..
         make -j"$(nproc)" install
     popd
