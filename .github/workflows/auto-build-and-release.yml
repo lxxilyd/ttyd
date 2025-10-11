@@ -1,0 +1,137 @@
+name: Auto Build & Release
+permissions:
+  contents: write
+  pull-requests: write
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'  # UTC 时间每天 00:00 检查
+
+jobs:
+  check_new_tag:
+    runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.set_output.outputs.new_tag }}
+    steps:
+    - name: Check latest ttyd tag
+      id: set_output
+      env:
+        GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      run: |
+          # 获取最新 upstream tag
+          LATEST_TAG=$(git ls-remote --tags https://github.com/tsl0922/ttyd.git \
+            | awk -F/ '{print $3}' \
+            | grep -v '\^{}' \
+            | sort -V \
+            | tail -n1)
+
+          echo "Latest upstream tag: $LATEST_TAG"
+
+          # 检查仓库是否已有对应 tag
+          if git ls-remote --tags https://github.com/${GITHUB_REPOSITORY}.git | grep -q "refs/tags/$LATEST_TAG"; then
+            echo "Tag $LATEST_TAG already exists in repo. Skipping build."
+            echo "new_tag=none" >> $GITHUB_OUTPUT
+          else
+            echo "New tag found: $LATEST_TAG"
+            echo "new_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+          fi
+    - name: Checkout cust/patch branch
+      uses: actions/checkout@v4
+      with:
+          ref: cust/patch
+          fetch-depth: 0
+    - name: Prepare Release branch
+      if: steps.set_output.outputs.new_tag != 'none'
+      env:
+        TAG: ${{ steps.set_output.outputs.new_tag }}
+      run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+          branch="release/${TAG}"
+
+          #1 Add upstream and fetch the tag
+          git remote add upstream https://github.com/tsl0922/ttyd.git
+          git fetch upstream --depth=1 tag "${TAG}"
+
+          #2 Create new branch off the upstream tag
+          git checkout -b "${branch}" "FETCH_HEAD"
+
+          #3 Merge in cust/patch
+          git fetch origin cust/patch
+          git merge --no-commit --no-ff origin/cust/patch || true
+
+          #4 Re-apply your own workflows
+          rm -rf .github/workflows
+          # git checkout origin/cust/patch
+
+          #5 Finalise and push
+          git add -A
+          git commit -m "sync: apply cust/patch on ${TAG}"
+          git push --force-with-lease origin "${branch}"
+  build:
+    needs: check_new_tag
+    if: needs.check_new_tag.outputs.new_tag != 'none'
+    name: Build ttyd (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [i686, x86_64, arm, armhf, aarch64, mips, mipsel, mips64, mips64el, s390x, win32]
+
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v3
+        with:
+          ref: release/${{ needs.check_new_tag.outputs.new_tag }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Fetch ttyd tags
+        run: |
+          LATEST_TAG="${{ needs.check_new_tag.outputs.new_tag }}"
+          echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
+
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake build-essential cmake curl file libtool
+      - name: Cross build (${{ matrix.target }})
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+        run: ./scripts/cross-build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ttyd.${{ matrix.target }}
+          path: build/ttyd*
+      - name: Set job output
+        id: set_output
+        run: |
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+    outputs:
+      latest_tag: ${{ steps.set_output.outputs.latest_tag }}
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+      - run: |
+          mkdir build
+          for file in ttyd.*/*; do
+            target=$(echo $file | awk -F/ '{print $1}')
+            [[ $file == *.exe ]] && target="$target.exe"
+            mv $file build/$target
+          done
+          pushd build; sha256sum ttyd.* > SHA256SUMS; popd
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.build.outputs.latest_tag }}
+          name: ${{ needs.build.outputs.latest_tag }}
+          files: build/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
