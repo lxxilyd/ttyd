@@ -1,0 +1,36 @@
+name: build
+on:
+  push:
+    branches:
+      - develop
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake build-essential cmake curl file libtool libuv1-dev libjson-c-dev libwebsockets-dev expect
+      - name: Build
+        run: |
+          mkdir build
+          cd build
+          cmake -DLWS_WITH_HTTP_UNCOMMON_HEADERS=1 -DLWS_WITH_HTTP_HEADERS_ALL=1 -DCMAKE_BUILD_TYPE=RELEASE -DBUILD_SHARED_LIBS=OFF -DCMAKE_C_FLAGS="-Os -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables -flto"  ..
+          make
+      - name: View build
+        run: pwd && ls && ls build/
+      - name: Upload build
+        run: |
+          echo "开始上传制品到宿主机"
+          cd build
+          pwd && ls
+          expect -c "
+          spawn scp ttyd ${{ vars.USER }}@${{ vars.HOST }}:${{ vars.UPLOAD_PATH }}
+          expect {
+          \"*assword\" {set timeout 300; send \"${{ secrets.PASSWORD }}\r\";}
+          \"yes/no\" {send \"yes\r\"; exp_continue;}
+          }
+          expect eof" 
+          echo "上传完毕"
+          

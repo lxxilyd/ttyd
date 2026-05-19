@@ -83,10 +83,25 @@ static void pss_buffer_free(struct pss_http *pss) {
   if (pss->buffer != (char *)index_html && pss->buffer != html_cache) free(pss->buffer);
 }
 
-static void access_log(struct lws *wsi, const char *path) {
-  char rip[50];
+static void get_rip(struct lws *wsi, char *rip, size_t len) {
+  if (lws_hdr_copy(wsi, rip, len, WSI_TOKEN_HTTP_X_REAL_IP) > 0) {
+    return;
+  }
+  if (lws_hdr_copy(wsi, rip, len, WSI_TOKEN_X_FORWARDED_FOR) > 0) {
+    char *first_ip = strtok(rip, ",");
+    if(first_ip) {
+      strncpy(rip, first_ip, len);
+      return;
+    }
+  }
+  lws_get_peer_simple(lws_get_network_wsi(wsi), rip, len);
+}
 
-  lws_get_peer_simple(lws_get_network_wsi(wsi), rip, sizeof(rip));
+static void access_log(struct lws *wsi, const char *path) {
+  char rip[128];
+  
+  get_rip(wsi, rip, sizeof(rip));
+  // lws_get_peer_simple(lws_get_network_wsi(wsi), rip, sizeof(rip));
   lwsl_notice("HTTP %s - %s\n", path, rip);
 }
 
@@ -115,7 +130,7 @@ int callback_http(struct lws *wsi, enum lws_callback_reasons reason, void *user,
 
       if (strcmp(pss->path, endpoints.token) == 0) {
         const char *credential = server->credential != NULL ? server->credential : "";
-        size_t n = sprintf(buf, "{\"token\": \"%s\"}", credential);
+        size_t n = snprintf(buf, sizeof(buf), "{\"token\": \"%s\"}", credential);
         if (lws_add_http_header_status(wsi, HTTP_STATUS_OK, &p, end) ||
             lws_add_http_header_by_token(wsi, WSI_TOKEN_HTTP_CONTENT_TYPE,
                                          (unsigned char *)"application/json;charset=utf-8", 30, &p, end) ||

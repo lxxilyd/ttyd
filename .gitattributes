@@ -1,1 +1,3 @@
 src/html.h linguist-generated
+.github/workflows/** merge=ours
+.gitattributes merge=ours

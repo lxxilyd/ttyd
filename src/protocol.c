@@ -9,6 +9,7 @@
 #include "pty.h"
 #include "server.h"
 #include "utils.h"
+#include "compat.h"
 
 // initial message list
 static char initial_cmds[] = {SET_WINDOW_TITLE, SET_PREFERENCES};
@@ -23,10 +24,10 @@ static int send_initial_message(struct lws *wsi, int index) {
   switch (cmd) {
     case SET_WINDOW_TITLE:
       gethostname(buffer, sizeof(buffer) - 1);
-      n = sprintf((char *)p, "%c%s (%s)", cmd, server->command, buffer);
+      n = snprintf((char *)p, 1 + 4096, "%c%s (%s)", cmd, server->command, buffer);
       break;
     case SET_PREFERENCES:
-      n = sprintf((char *)p, "%c%s", cmd, server->prefs_json);
+      n = snprintf((char *)p, 1 + 4096, "%c%s", cmd, server->prefs_json);
       break;
     default:
       break;
@@ -57,9 +58,9 @@ static bool check_host_origin(struct lws *wsi) {
   int port;
   if (lws_parse_uri(buf, &prot, &address, &port, &path)) return false;
   if (port == 80 || port == 443) {
-    sprintf(buf, "%s", address);
+    snprintf(buf, sizeof(buf), "%s", address);
   } else {
-    sprintf(buf, "%s:%d", address, port);
+    snprintf(buf, sizeof(buf), "%s:%d", address, port);
   }
 
   char host_buf[256];
@@ -106,6 +107,9 @@ static void process_exit_cb(pty_process *process) {
 
 done:
   pty_ctx_free(ctx);
+
+  // if we are going to exit, do it now.
+  if (force_exit) exit(0);
 }
 
 static char **build_args(struct pss_tty *pss) {
@@ -148,7 +152,54 @@ static char **build_env(struct pss_tty *pss) {
 }
 
 static bool spawn_process(struct pss_tty *pss, uint16_t columns, uint16_t rows) {
-  pty_process *process = process_init((void *)pty_ctx_init(pss), server->loop, build_args(pss), build_env(pss));
+  char **args = build_args(pss);
+  char **env = build_env(pss);
+
+  // 打印 args（命令行参数）
+  lwsl_debug("pss->address %s\n", pss->address);
+  // 检查并替换 `login -h {client_ip}`
+  if (args[0] != NULL && strcmp(args[0], "login") == 0) {
+    if (args[1] != NULL && strcmp(args[1], "-h") == 0) {
+      // 计算 args 的当前长度
+      int args_len = 0;
+      while (args[args_len] != NULL) args_len++;
+
+      // 分配新的 args 数组（至少 3 个元素 + NULL 终止）
+      char **new_args = malloc((args_len < 3 ? 4 : args_len + 1) * sizeof(char *));
+      if (!new_args) {
+        lwsl_err("malloc failed\n");
+        return false;
+      }
+
+      // 复制原有参数
+      for (int i = 0; i < args_len; i++) {
+        new_args[i] = args[i];
+      }
+
+      // 如果原 args 长度不足，初始化新增元素
+      if (args_len < 3) {
+        new_args[args_len] = NULL;      // args[2]（如果原本没有）
+        new_args[args_len + 1] = NULL;  // NULL 终止
+      }
+
+      // 替换 hostname
+      free(new_args[2]);  // 释放旧值（可能是 NULL）
+      new_args[2] = strdup(pss->address);
+      if (!new_args[2]) {
+        lwsl_err("strdup failed\n");
+        free(new_args);
+        return false;
+      }
+
+      // 释放旧 args（但不释放其元素，因为它们被 new_args 接管了）
+      free(args);
+      args = new_args;
+
+      lwsl_debug("Replace login -h hostname -> %s\n", pss->address);
+    }
+  }
+
+  pty_process *process = process_init((void *)pty_ctx_init(pss), server->loop, args, env);
   if (server->cwd != NULL) process->cwd = strdup(server->cwd);
   if (columns > 0) process->columns = columns;
   if (rows > 0) process->rows = rows;
@@ -192,6 +243,20 @@ static bool check_auth(struct lws *wsi, struct pss_tty *pss) {
   }
 
   return true;
+}
+
+void get_rip(struct lws *wsi, char *rip, size_t len) {
+  if (lws_hdr_copy(wsi, rip, len, WSI_TOKEN_HTTP_X_REAL_IP) > 0) {
+    return;
+  }
+  if (lws_hdr_copy(wsi, rip, len, WSI_TOKEN_X_FORWARDED_FOR) > 0) {
+    char *first_ip = strtok(rip, ",");
+    if (first_ip) {
+      strncpy(rip, first_ip, len);
+      return;
+    }
+  }
+  lws_get_peer_simple(lws_get_network_wsi(wsi), rip, len);
 }
 
 int callback_tty(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len) {
@@ -246,7 +311,8 @@ int callback_tty(struct lws *wsi, enum lws_callback_reasons reason, void *user, 
 
       server->client_count++;
 
-      lws_get_peer_simple(lws_get_network_wsi(wsi), pss->address, sizeof(pss->address));
+      // lws_get_peer_simple(lws_get_network_wsi(wsi), pss->address, sizeof(pss->address));
+      get_rip(wsi, pss->address, sizeof(pss->address));
       lwsl_notice("WS   %s - %s, clients: %d\n", pss->path, pss->address, server->client_count);
       break;
 
@@ -381,9 +447,16 @@ int callback_tty(struct lws *wsi, enum lws_callback_reasons reason, void *user, 
 
       if ((server->once || server->exit_no_conn) && server->client_count == 0) {
         lwsl_notice("exiting due to the --once/--exit-no-conn option.\n");
-        force_exit = true;
+
+        // stop accepting new ws connections
         lws_cancel_service(context);
-        exit(0);
+
+        if (process_running(pss->process)) {
+          force_exit = true;
+          lwsl_notice("send ^C to force exit.\n");
+        } else {
+          exit(0);
+        }
       }
       break;
 

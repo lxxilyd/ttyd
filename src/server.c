@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 
 #include "utils.h"
+#include "compat.h"
 
 #ifndef TTYD_VERSION
 #define TTYD_VERSION "unknown"
@@ -65,6 +66,7 @@ static const struct option options[] = {{"port", required_argument, NULL, 'p'},
 #if LWS_LIBRARY_VERSION_NUMBER >= 4000000
                                         {"ping-interval", required_argument, NULL, 'P'},
 #endif
+                                        {"srv-buf-size", required_argument, NULL, 'f'},
                                         {"ipv6", no_argument, NULL, '6'},
                                         {"ssl", no_argument, NULL, 'S'},
                                         {"ssl-cert", required_argument, NULL, 'C'},
@@ -83,7 +85,7 @@ static const struct option options[] = {{"port", required_argument, NULL, 'p'},
                                         {"version", no_argument, NULL, 'v'},
                                         {"help", no_argument, NULL, 'h'},
                                         {NULL, 0, 0, 0}};
-static const char *opt_string = "p:i:U:c:H:u:g:s:w:I:b:P:6aSC:K:A:Wt:T:Om:oqBd:vh";
+static const char *opt_string = "p:i:U:c:H:u:g:s:w:I:b:P:f:6aSC:K:A:Wt:T:Om:oqBd:vh";
 
 static void print_help() {
   // clang-format off
@@ -116,6 +118,7 @@ static void print_help() {
 #if LWS_LIBRARY_VERSION_NUMBER >= 4000000
           "    -P, --ping-interval     Websocket ping interval(sec) (default: 5)\n"
 #endif
+          "    -f, --srv-buf-size      Maximum chunk of file (in bytes) that can be sent at once, a larger value may improve throughput (default: 4096)\n"
 #ifdef LWS_WITH_IPV6
           "    -6, --ipv6              Enable IPv6 support\n"
 #endif
@@ -155,7 +158,7 @@ static void print_config() {
   if (server->exit_no_conn) lwsl_notice("  exit_no_conn: true\n");
   if (server->index != NULL) lwsl_notice("  custom index.html: %s\n", server->index);
   if (server->cwd != NULL) lwsl_notice("  working directory: %s\n", server->cwd);
-  if (!server->writable) lwsl_notice("The --writable option is not set, will start in readonly mode");
+  if (!server->writable) lwsl_warn("The --writable option is not set, will start in readonly mode\n");
 }
 
 static struct server *server_new(int argc, char **argv, int start) {
@@ -167,7 +170,7 @@ static struct server *server_new(int argc, char **argv, int start) {
   memset(ts, 0, sizeof(struct server));
   ts->client_count = 0;
   ts->sig_code = SIGHUP;
-  sprintf(ts->terminal_type, "%s", "xterm-256color");
+  snprintf(ts->terminal_type, sizeof(ts->terminal_type), "%s", "xterm-256color");
   get_sig_name(ts->sig_code, ts->sig_name, sizeof(ts->sig_name));
   if (start == argc) return ts;
 
@@ -188,7 +191,7 @@ static struct server *server_new(int argc, char **argv, int start) {
   char *ptr = ts->command;
   for (int i = 0; i < cmd_argc; i++) {
     size_t len = strlen(ts->argv[i]);
-    ptr = memcpy(ptr, ts->argv[i], len + 1) + len;
+    ptr = (char *)memcpy(ptr, ts->argv[i], len + 1) + len;
     if (i != cmd_argc - 1) {
       *ptr++ = ' ';
     }
@@ -425,8 +428,9 @@ int main(int argc, char **argv) {
       case 'I':
         if (!strncmp(optarg, "~/", 2)) {
           const char *home = getenv("HOME");
-          server->index = malloc(strlen(home) + strlen(optarg) - 1);
-          sprintf(server->index, "%s%s", home, optarg + 1);
+          size_t index_len = strlen(home) + strlen(optarg);
+          server->index = malloc(index_len);
+          snprintf(server->index, index_len, "%s%s", home, optarg + 1);
         } else {
           server->index = strdup(optarg);
         }
@@ -463,6 +467,14 @@ int main(int argc, char **argv) {
         retry.secs_since_valid_hangup = interval + 7;
       } break;
 #endif
+      case 'f': {
+        int serv_buf_size = parse_int("srv-buf-size", optarg);
+        if (serv_buf_size < 0) {
+          fprintf(stderr, "ttyd: invalid srv-buf-size: %s\n", optarg);
+          return -1;
+        }
+        info.pt_serv_buf_size = serv_buf_size;
+      } break;
       case '6':
         info.options &= ~(LWS_SERVER_OPTION_DISABLE_IPV6);
         break;
@@ -523,7 +535,7 @@ int main(int argc, char **argv) {
   lws_set_log_level(debug_level, NULL);
 
   char server_hdr[128] = "";
-  sprintf(server_hdr, "ttyd/%s (libwebsockets/%s)", TTYD_VERSION, LWS_LIBRARY_VERSION);
+  snprintf(server_hdr, sizeof(server_hdr), "ttyd/%s (libwebsockets/%s)", TTYD_VERSION, LWS_LIBRARY_VERSION);
   info.server_string = server_hdr;
 
 #if LWS_LIBRARY_VERSION_NUMBER < 4000000
@@ -553,9 +565,9 @@ int main(int argc, char **argv) {
   if (ssl) {
     info.ssl_cert_filepath = cert_path;
     info.ssl_private_key_filepath = key_path;
-    #ifndef LWS_WITH_MBEDTLS
+#ifndef LWS_WITH_MBEDTLS
     info.ssl_options_set = SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1;
-    #endif
+#endif
     if (strlen(ca_path) > 0) {
       info.ssl_ca_filepath = ca_path;
       info.options |= LWS_SERVER_OPTION_REQUIRE_VALID_OPENSSL_CLIENT_CERT;
@@ -596,7 +608,7 @@ int main(int argc, char **argv) {
 
   if (browser) {
     char url[30];
-    sprintf(url, "%s://localhost:%d", ssl ? "https" : "http", port);
+    snprintf(url, sizeof(url), "%s://localhost:%d", ssl ? "https" : "http", port);
     open_uri(url);
   }
 

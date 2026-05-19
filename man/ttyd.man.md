@@ -83,6 +83,9 @@ ttyd 1 "September 2016" ttyd "User Manual"
   -P, --ping-interval
       Websocket ping interval(sec) (default: 5)
 
+  -f, --srv-buf-size
+      Maximum chunk of file (in bytes) that can be sent at once, a larger value may improve throughput (default: 4096)
+
   -6, --ipv6
       Enable IPv6 support
 
@@ -123,8 +126,11 @@ ttyd has a mechanism to pass server side command-line arguments to the browser p
 - `-t enableZmodem=true`: enable [ZMODEM](https://en.wikipedia.org/wiki/ZMODEM) / [lrzsz](https://ohse.de/uwe/software/lrzsz.html) file transfer support
 - `-t enableTrzsz=true`: enable [trzsz](https://trzsz.github.io) file transfer support
 - `-t enableSixel=true`: enable [Sixel](https://en.wikipedia.org/wiki/Sixel) image output support ([Usage](https://saitoha.github.io/libsixel/))
+- `-t closeOnDisconnect=true`: close the terminal on disconnection, this will disable reconnect
 - `-t titleFixed=hello`: set a fixed title for the browser window
 - `-t fontSize=20`: change the font size of the terminal
+- `-t unicodeVersion=11`: set xterm unicode support level (default: 11, use 6 to disable unicode addon)
+- `-t trzszDragInitTimeout=3000`: set the timeout in milliseconds for initializing drag and drop files to upload. (default: 3000) 
 
 ## Advanced usage
 
@@ -150,7 +156,7 @@ ttyd -p 8080 bash -x
   Then open http://localhost:8080 with a browser, you will get a bash shell with debug mode enabled. More examples:
 
   - If you want to login with your system accounts on the web browser, run `ttyd login`.
-  - You can even run a none shell command like vim, try: `ttyd vim`, the web browser will show you a vim editor.
+  - You can even run a non-shell command like vim, try: `ttyd vim`, the web browser will show you a vim editor.
   - Sharing single process with multiple clients: `ttyd tmux new -A -s ttyd vim`, run `tmux new -A -s ttyd` to connect to the tmux session from terminal.
 
 # SSL how-to
